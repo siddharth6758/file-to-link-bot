@@ -2,6 +2,7 @@ import os
 import requests
 from flask import Flask, request, abort, Response
 from token_utils import generate_token, verify_token
+from asgiref.wsgi import WsgiToAsgi
 
 BOT_TOKEN = os.environ.get("BOT_TOKEN")
 if not BOT_TOKEN:
@@ -58,3 +59,5 @@ def watch():
         video.iter_content(chunk_size=1024 * 1024),
         content_type="video/mp4"
     )
+
+asgi_app = WsgiToAsgi(app)
