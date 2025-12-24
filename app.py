@@ -1,6 +1,6 @@
 import os
 import requests
-from flask import Flask, request, abort, Response
+from flask import Flask, request, abort, Response, stream_with_context
 from token_utils import generate_token, verify_token
 from asgiref.wsgi import WsgiToAsgi
 
@@ -41,23 +41,38 @@ def watch():
     file_id = verify_token(token)
 
     if not file_id:
-        abort(403, "Link expired")
+        abort(403, "Expired")
 
     tg = requests.get(
         f"{TG_API}/getFile",
-        params={"file_id": file_id}
+        params={"file_id": file_id},
+        timeout=10
     ).json()
+
+    if "result" not in tg:
+        abort(500, "Telegram getFile failed")
 
     path = tg["result"]["file_path"]
 
-    video = requests.get(
+    tg_stream = requests.get(
         f"https://api.telegram.org/file/bot{BOT_TOKEN}/{path}",
-        stream=True
+        stream=True,
+        timeout=30
     )
 
+    def generate():
+        for chunk in tg_stream.iter_content(chunk_size=1024 * 256):
+            if chunk:
+                yield chunk
+
     return Response(
-        video.iter_content(chunk_size=1024 * 1024),
-        content_type="video/mp4"
+        stream_with_context(generate()),
+        mimetype="video/mp4",
+        headers={
+            "Cache-Control": "no-store",
+            "Accept-Ranges": "bytes",
+            "X-Content-Type-Options": "nosniff"
+        }
     )
 
 asgi_app = WsgiToAsgi(app)
