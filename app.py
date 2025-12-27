@@ -17,19 +17,37 @@ app = Flask(__name__)
 def webhook():
     update = request.json
     msg = update.get("message", {})
+    chat_id = msg.get("chat", {}).get("id")
 
-    if "video" not in msg:
+    file_id = None
+    media_type = None
+
+    if "video" in msg:
+        file_id = msg["video"]["file_id"]
+        media_type = "video"
+
+    elif "photo" in msg:
+        # highest resolution photo
+        file_id = msg["photo"][-1]["file_id"]
+        media_type = "image"
+
+    elif "animation" in msg:  # GIF
+        file_id = msg["animation"]["file_id"]
+        media_type = "gif"
+
+    elif "document" in msg:
+        file_id = msg["document"]["file_id"]
+        media_type = "document"
+
+    else:
         return {"ok": True}
 
-    file_id = msg["video"]["file_id"]
-    chat_id = msg["chat"]["id"]
-
-    token = generate_token(file_id)
+    token = generate_token(file_id, media_type)
     watch_url = f"{DOMAIN_URL}watch?token={token}"
 
     requests.post(f"{TG_API}/sendMessage", json={
         "chat_id": chat_id,
-        "text": f"Secure video link (valid 5 minutes):\n{watch_url}"
+        "text": f"Secure link (valid 5 minutes):\n{watch_url}"
     })
 
     return {"ok": True}
@@ -38,19 +56,20 @@ def webhook():
 @app.route("/watch")
 def watch():
     token = request.args.get("token")
-    file_id = verify_token(token)
+    data = verify_token(token)
 
-    if not file_id:
-        abort(403, "Expired")
+    if not data:
+        abort(403, "Expired or invalid link")
 
+    file_id = data["file_id"]
+    media_type = data["media_type"]
+
+    # Get file path from Telegram
     tg = requests.get(
         f"{TG_API}/getFile",
         params={"file_id": file_id},
         timeout=10
     ).json()
-
-    if "result" not in tg:
-        abort(500, "Telegram getFile failed")
 
     path = tg["result"]["file_path"]
 
@@ -60,6 +79,16 @@ def watch():
         timeout=30
     )
 
+    # Map media type to browser content type
+    content_types = {
+        "video": "video/mp4",
+        "gif": "image/gif",
+        "image": "image/jpeg",
+        "document": "application/octet-stream"
+    }
+
+    content_type = content_types.get(media_type, "application/octet-stream")
+
     def generate():
         for chunk in tg_stream.iter_content(chunk_size=1024 * 256):
             if chunk:
@@ -67,12 +96,13 @@ def watch():
 
     return Response(
         stream_with_context(generate()),
-        mimetype="video/mp4",
+        content_type=content_type,
         headers={
             "Cache-Control": "no-store",
             "Accept-Ranges": "bytes",
             "X-Content-Type-Options": "nosniff"
         }
     )
+
 
 asgi_app = WsgiToAsgi(app)

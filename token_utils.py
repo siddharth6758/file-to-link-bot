@@ -11,9 +11,10 @@ fernet = Fernet(SECRET_KEY.encode())
 TTL = 300  # 5 minutes
 
 
-def generate_token(file_id: str) -> str:
+def generate_token(file_id: str, media_type: str) -> str:
     payload = {
         "file_id": file_id,
+        "media_type": media_type,
         "exp": time.time() + TTL
     }
     return fernet.encrypt(json.dumps(payload).encode()).decode()
@@ -24,6 +25,6 @@ def verify_token(token: str):
         data = json.loads(fernet.decrypt(token.encode()).decode())
         if data["exp"] < time.time():
             return None
-        return data["file_id"]
+        return data
     except Exception:
         return None
