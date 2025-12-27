@@ -9,9 +9,9 @@ if not BOT_TOKEN:
     raise RuntimeError("BOT_TOKEN not set")
 
 TG_API = f"https://api.telegram.org/bot{BOT_TOKEN}"
+DOMAIN_URL = f"https://www.freetelebotfiletolink.publicvm.com/"
 
 app = Flask(__name__)
-
 
 @app.route("/webhook", methods=["POST"])
 def webhook():
@@ -25,7 +25,7 @@ def webhook():
     chat_id = msg["chat"]["id"]
 
     token = generate_token(file_id)
-    watch_url = f"{request.url_root}watch?token={token}"
+    watch_url = f"{DOMAIN_URL}watch?token={token}"
 
     requests.post(f"{TG_API}/sendMessage", json={
         "chat_id": chat_id,
